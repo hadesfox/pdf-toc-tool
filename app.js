@@ -98,17 +98,25 @@ async function checkHasTextLayer(pdfDoc) {
 async function initOCR() {
   if (state.ocrWorker) return state.ocrWorker;
   log('初始化 OCR 引擎 (chi_sim+eng)...');
-  const worker = await Tesseract.createWorker('chi_sim+eng', 1, {
-    logger: m => {
-      if (m.status === 'recognizing text') {
-        showProgress('OCR 识别中', m.status, Math.round(m.progress * 100));
-      } else {
-        log(`OCR: ${m.status} ${Math.round((m.progress || 0) * 100)}%`);
-      }
-    }
-  });
-  state.ocrWorker = worker;
-  return worker;
+  try {
+    // 使用 CDN 路径加载 worker，避免 blob URL 被 CSP 拦截
+    const worker = await Tesseract.createWorker('chi_sim+eng', 1, {
+      logger: m => {
+        if (m.status === 'recognizing text') {
+          showProgress('OCR 识别中', m.status, Math.round(m.progress * 100));
+        } else {
+          log(`OCR: ${m.status} ${Math.round((m.progress || 0) * 100)}%`);
+        }
+      },
+      workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
+    });
+    state.ocrWorker = worker;
+    return worker;
+  } catch (err) {
+    log(`OCR 引擎初始化失败: ${err.message}`);
+    log('提示：浏览器安全策略阻止了 Worker 创建。请尝试 Chrome/Edge，或使用下方手动输入功能。');
+    throw err;
+  }
 }
 
 async function ocrCanvas(canvas) {
@@ -711,6 +719,15 @@ async function processFile(file) {
     log(`错误: ${err.message}`);
     showProgress('处理失败', err.message, 0);
     console.error(err);
+
+    // OCR Worker 创建失败（CSP 限制等）→ 切换到手动输入模式
+    if (err.message.includes('Worker') || err.message.includes('CSP') || err.message.includes('Security') || err.message.includes('Content Security')) {
+      log('自动识别失败，已切换到手动输入模式。请直接在下方表格中添加书签。');
+      state.tocEntries = [];
+      state.offset = 0;
+      showStep('step-review');
+      renderTOCTable();
+    }
   }
 }
 
