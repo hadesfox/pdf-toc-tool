@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF 书签生成器</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>📚 PDF 书签生成器</h1>
+    <p>为没有目录的 PDF 自动生成可点击书签 · 纯浏览器端处理，文件不上传</p>
+  </header>
+
+  <main id="app">
+    <!-- Step 1: Upload -->
+    <section id="step-upload" class="step active">
+      <div class="dropzone" id="dropzone">
+        <div class="dropzone-icon">📄</div>
+        <p class="dropzone-text">拖入 PDF 文件，或<span class="link">点击选择</span></p>
+        <p class="dropzone-hint">支持扫描版和文字版 PDF · 全程本地处理</p>
+        <input type="file" id="file-input" accept=".pdf" hidden>
+      </div>
+      <div class="features">
+        <div class="feature">
+          <span class="feature-icon">🔍</span>
+          <span>自动识别目录页</span>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">📝</span>
+          <span>OCR 文字识别</span>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">✏️</span>
+          <span>书签可编辑</span>
+        </div>
+        <div class="feature">
+          <span class="feature-icon">🔒</span>
+          <span>隐私零上传</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 2: Processing -->
+    <section id="step-processing" class="step">
+      <div class="card">
+        <h2 id="progress-title">正在处理...</h2>
+        <div class="progress-bar">
+          <div class="progress-fill" id="progress-fill"></div>
+        </div>
+        <p class="progress-detail" id="progress-detail"></p>
+        <div class="log" id="log-area"></div>
+      </div>
+    </section>
+
+    <!-- Step 3: Review -->
+    <section id="step-review" class="step">
+      <div class="card">
+        <div class="review-header">
+          <h2>目录预览</h2>
+          <div class="offset-control">
+            <label>页码偏移</label>
+            <input type="number" id="offset-input" value="0" min="-20" max="50">
+            <button class="btn-sm" id="offset-down">−</button>
+            <button class="btn-sm" id="offset-up">+</button>
+            <span class="hint" id="offset-hint">印刷页码 + 偏移 = PDF页码</span>
+          </div>
+        </div>
+
+        <div class="toc-preview" id="toc-preview"></div>
+
+        <table class="toc-table">
+          <thead>
+            <tr>
+              <th style="width:60px">层级</th>
+              <th>标题</th>
+              <th style="width:80px">页码</th>
+              <th style="width:80px">PDF页</th>
+              <th style="width:50px"></th>
+            </tr>
+          </thead>
+          <tbody id="toc-body"></tbody>
+        </table>
+
+        <div class="actions">
+          <button class="btn" id="btn-add">+ 添加书签</button>
+          <button class="btn" id="btn-rescan">重新选择文件</button>
+          <button class="btn primary" id="btn-generate">生成 PDF</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 4: Download -->
+    <section id="step-download" class="step">
+      <div class="card center">
+        <div class="success-icon">✅</div>
+        <h2>完成！</h2>
+        <p id="result-summary"></p>
+        <button class="btn primary large" id="btn-download">⬇ 下载 PDF</button>
+        <button class="btn" id="btn-reset">处理另一个文件</button>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <a href="https://github.com/hadesfox/pdf-toc" target="_blank">GitHub</a>
+    <span>·</span>
+    <span>pdf.js + tesseract.js + pdf-lib</span>
+  </footer>
+
+  <!-- Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
