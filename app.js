@@ -214,10 +214,35 @@ function parseTOCText(text) {
       });
     }
   }
-  // Deduplicate (OCR might produce duplicates)
+  return removeDuplicateEntries(entries);
+}
+
+function removeDuplicateEntries(entries) {
+  if (entries.length < 2) return entries;
+
+  // Detect whole-list duplication: the first half is identical to the second half.
+  // This happens when OCR reads two TOC pages that contain the same visible content
+  // (e.g. a duplicate scanned page, or a two-page spread that is processed twice).
+  if (entries.length % 2 === 0) {
+    const half = entries.length / 2;
+    let repeated = true;
+    for (let i = 0; i < half; i++) {
+      const a = entries[i];
+      const b = entries[i + half];
+      if (a.title !== b.title || a.page !== b.page) {
+        repeated = false;
+        break;
+      }
+    }
+    if (repeated) {
+      return entries.slice(0, half);
+    }
+  }
+
+  // Fallback: remove exact duplicate title+page pairs
   const seen = new Set();
   return entries.filter(e => {
-    const key = e.title + e.page;
+    const key = e.title + '|' + e.page;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -414,6 +439,14 @@ function onEntryEdit(e) {
 function onEntryDelete(e) {
   const index = parseInt(e.target.dataset.index);
   state.tocEntries.splice(index, 1);
+  renderTOCTable();
+}
+
+function deduplicate() {
+  const before = state.tocEntries.length;
+  state.tocEntries = removeDuplicateEntries(state.tocEntries);
+  const after = state.tocEntries.length;
+  log(`清除重复：从 ${before} 条合并为 ${after} 条`);
   renderTOCTable();
 }
 
@@ -634,6 +667,7 @@ function init() {
 
   // Action buttons
   $('btn-add').addEventListener('click', addEntry);
+  $('btn-dedup').addEventListener('click', deduplicate);
   $('btn-rescan').addEventListener('click', reset);
   $('btn-generate').addEventListener('click', generate);
   $('btn-download').addEventListener('click', download);
