@@ -303,19 +303,20 @@ function countVisible(nodes) {
 }
 
 function createOutlineItems(nodes, parentRef, context, pages) {
-  const { PDFName, PDFNumber, PDFHexString } = PDFLib;
+  const { PDFName, PDFNumber, PDFHexString, PDFDict } = PDFLib;
   const refs = [];
 
   for (const node of nodes) {
     const pageIndex = Math.max(0, Math.min(pages.length - 1, node.pdfPageIndex));
     const pageRef = pages[pageIndex].ref;
-    // Create outline item with UTF-16BE BOM for Chinese support
     const titleStr = '\uFEFF' + node.title;
-    const ref = context.obj({
-      Title: PDFHexString.of(titleStr),
-      Parent: parentRef,
-      Dest: [pageRef, PDFName.of('Fit')],
-    });
+
+    const dict = PDFDict.withContext(context);
+    dict.set(PDFName.of('Title'), PDFHexString.of(titleStr));
+    dict.set(PDFName.of('Parent'), parentRef);
+    dict.set(PDFName.of('Dest'), context.obj([pageRef, PDFName.of('Fit')]));
+
+    const ref = context.obj(dict);
     refs.push(ref);
   }
 
@@ -333,7 +334,7 @@ function createOutlineItems(nodes, parentRef, context, pages) {
       const dict = context.lookup(refs[i]);
       dict.set(PDFName.of('First'), childRefs[0]);
       dict.set(PDFName.of('Last'), childRefs[childRefs.length - 1]);
-      dict.set(PDFName.of('Count'), PDFNumber.of(childRefs.length));
+      dict.set(PDFName.of('Count'), PDFNumber.of(countVisible(nodes[i].children)));
     }
   }
 
@@ -341,11 +342,15 @@ function createOutlineItems(nodes, parentRef, context, pages) {
 }
 
 async function generateBookmarkedPDF(file, entries, offset) {
-  const { PDFDocument, PDFName, PDFNumber, PDFHexString } = PDFLib;
+  const { PDFDocument, PDFName, PDFNumber, PDFDict } = PDFLib;
 
+  log('加载 PDF 到 pdf-lib...');
   const bytes = await file.arrayBuffer();
-  const pdfDoc = await PDFDocument.load(bytes);
+  const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  log('PDF 加载完成');
+
   const pages = pdfDoc.getPages();
+  log(`获取到 ${pages.length} 页`);
 
   // Calculate PDF page indices (0-based)
   const entriesWithPages = entries.map(e => ({
@@ -358,25 +363,35 @@ async function generateBookmarkedPDF(file, entries, offset) {
   }
 
   // Build outline tree
+  log('构建书签树...');
   const tree = buildOutlineTree(entriesWithPages);
   const context = pdfDoc.context;
 
   // Create outlines dictionary
-  const outlinesRef = context.obj({ Type: 'Outlines' });
+  log('创建大纲字典...');
+  const outlinesDict = PDFDict.withContext(context);
+  outlinesDict.set(PDFName.of('Type'), PDFName.of('Outlines'));
+  const outlinesRef = context.obj(outlinesDict);
 
   if (tree.length > 0) {
     const topRefs = createOutlineItems(tree, outlinesRef, context, pages);
-    const outlinesDict = context.lookup(outlinesRef);
-    outlinesDict.set(PDFName.of('First'), topRefs[0]);
-    outlinesDict.set(PDFName.of('Last'), topRefs[topRefs.length - 1]);
-    outlinesDict.set(PDFName.of('Count'), PDFNumber.of(countVisible(tree)));
+    const outlinesRoot = context.lookup(outlinesRef);
+    outlinesRoot.set(PDFName.of('First'), topRefs[0]);
+    outlinesRoot.set(PDFName.of('Last'), topRefs[topRefs.length - 1]);
+    outlinesRoot.set(PDFName.of('Count'), PDFNumber.of(countVisible(tree)));
   }
 
   // Replace existing outlines in catalog
+  log('替换目录中的大纲...');
   pdfDoc.catalog.set(PDFName.of('Outlines'), outlinesRef);
 
-  // Save
-  const outputBytes = await pdfDoc.save();
+  // Save with options that reduce stack usage for large PDFs
+  log('开始保存 PDF，这可能需要一些时间...');
+  const outputBytes = await pdfDoc.save({
+    useObjectStreams: false,
+    updateFieldAppearances: false,
+  });
+  log('PDF 保存完成');
   return new Blob([outputBytes], { type: 'application/pdf' });
 }
 
