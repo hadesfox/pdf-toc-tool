@@ -273,6 +273,135 @@ async function detectOffset(pdfDoc, entries, hasText) {
   return 5; // default
 }
 
+function buildPythonScript(entries, offset, fileName) {
+  const toc = entries.map(e => [e.level, e.title, e.page + offset]);
+  const tocJson = JSON.stringify(toc, null, 2);
+  return `# -*- coding: utf-8 -*-
+"""
+PDF 书签写入脚本
+由 PDF 书签生成器 (https://hadesfox.github.io/pdf-toc-tool/) 自动生成
+
+原始文件: ${fileName}
+书签数量: ${entries.length}
+页码偏移: ${offset}（印刷页码 + ${offset} = PDF 页码）
+
+使用方法:
+  1. 安装依赖:  pip install pymupdf
+  2. 运行脚本:  python apply_toc.py 输入.pdf 输出.pdf
+"""
+
+import sys
+import fitz
+
+TOC = ${tocJson}
+
+
+def add_bookmarks(input_path, output_path):
+    doc = fitz.open(input_path)
+    # 清除原有书签（如果存在的话）
+    doc.set_toc([])
+    # 写入新书签
+    doc.set_toc(TOC)
+    doc.save(output_path, garbage=4, deflate=True)
+    doc.close()
+    print(f"已保存: {output_path} (共 {len(TOC)} 个书签)")
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 3:
+        print("用法: python apply_toc.py <输入PDF> <输出PDF>")
+        print("示例: python apply_toc.py \\"${fileName.replace(/"/g, '\\"')}\\" \\"${fileName.replace(/\.pdf$/i, '_bookmarked.pdf').replace(/"/g, '\\"')}\\"")
+        sys.exit(1)
+    add_bookmarks(sys.argv[1], sys.argv[2])
+`;
+}
+
+function downloadLocalScript() {
+  const script = buildPythonScript(state.tocEntries, state.offset, state.file.name);
+  const blob = new Blob([script], { type: 'text/x-python;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'apply_toc.py';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  log('已下载本地处理脚本: apply_toc.py');
+}
+
+function downloadJSON() {
+  const data = {
+    source: state.file.name,
+    offset: state.offset,
+    generatedAt: new Date().toISOString(),
+    toc: state.tocEntries.map(e => ({
+      level: e.level,
+      title: e.title,
+      printedPage: e.page,
+      pdfPage: e.page + state.offset,
+    })),
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = state.file.name.replace(/\.pdf$/i, '') + '_toc.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  log('已下载 JSON 数据');
+}
+
+function showDownloadResult(success) {
+  const l1 = state.tocEntries.filter(e => e.level === 1).length;
+  const l2 = state.tocEntries.filter(e => e.level === 2).length;
+  const l3 = state.tocEntries.filter(e => e.level === 3).length;
+  const card = document.querySelector('#step-download .card');
+  card.innerHTML = '';
+
+  if (success) {
+    card.innerHTML = `
+      <div class="success-icon">✅</div>
+      <h2>完成！</h2>
+      <p id="result-summary">
+        文件: <b>${escapeHtml(state.outputFileName)}</b><br>
+        书签数: <b>${state.tocEntries.length}</b> 个
+        （一级 ${l1} / 二级 ${l2} / 三级 ${l3}）<br>
+        页码偏移: <b>${state.offset}</b>
+      </p>
+      <button class="btn primary large" id="btn-download">⬇ 下载 PDF</button>
+      <button class="btn" id="btn-download-script">⬇ 也下载本地脚本（备用）</button>
+      <button class="btn" id="btn-reset">处理另一个文件</button>
+    `;
+  } else {
+    card.innerHTML = `
+      <div class="success-icon" style="color: #f59e0b;">⚠️</div>
+      <h2>浏览器无法直接保存此 PDF</h2>
+      <p id="result-summary">
+        这个 PDF 文件较大（扫描版或对象数很多），前端 pdf-lib 在保存时超出了浏览器调用栈限制。<br><br>
+        文件: <b>${escapeHtml(state.file.name)}</b><br>
+        书签数: <b>${state.tocEntries.length}</b> 个
+        （一级 ${l1} / 二级 ${l2} / 三级 ${l3}）<br>
+        页码偏移: <b>${state.offset}</b><br><br>
+        请下载下面的 Python 脚本，在本地运行即可写入书签。
+      </p>
+      <button class="btn primary large" id="btn-download-script">⬇ 下载 Python 脚本</button>
+      <button class="btn" id="btn-download-json">⬇ 下载 JSON 数据</button>
+      <button class="btn" id="btn-reset">处理另一个文件</button>
+    `;
+  }
+
+  // Re-bind buttons
+  const btnDownload = $('btn-download');
+  if (btnDownload) btnDownload.addEventListener('click', download);
+  $('btn-download-script').addEventListener('click', downloadLocalScript);
+  const btnJson = $('btn-download-json');
+  if (btnJson) btnJson.addEventListener('click', downloadJSON);
+  $('btn-reset').addEventListener('click', reset);
+}
+
 // ===== PDF Writing (pdf-lib) =====
 function buildOutlineTree(entries) {
   const root = { children: [], level: 0 };
@@ -595,23 +724,24 @@ async function generate() {
     state.outputBlob = blob;
     state.outputFileName = state.file.name.replace(/\.pdf$/i, '') + '_bookmarked.pdf';
 
-    const l1 = state.tocEntries.filter(e => e.level === 1).length;
-    const l2 = state.tocEntries.filter(e => e.level === 2).length;
-    const l3 = state.tocEntries.filter(e => e.level === 3).length;
-
-    $('result-summary').innerHTML = `
-      文件: <b>${escapeHtml(state.outputFileName)}</b><br>
-      书签数: <b>${state.tocEntries.length}</b> 个
-      （一级 ${l1} / 二级 ${l2} / 三级 ${l3}）<br>
-      页码偏移: <b>${state.offset}</b>
-    `;
-
     showProgress('完成', '书签已写入', 100);
+    showDownloadResult(true);
     showStep('step-download');
   } catch (err) {
     log(`生成失败: ${err.message}`);
     showProgress('生成失败', err.message, 0);
     console.error(err);
+
+    // Browser pdf-lib cannot handle large scanned PDFs due to call stack limits.
+    // Fall back to a local Python script that uses PyMuPDF.
+    const isLargeFileError = err.message.includes('call stack') ||
+      err.message.includes('too large') ||
+      err.message.includes('Maximum');
+    if (isLargeFileError) {
+      log('已启用本地脚本回退方案，请在本地运行 Python 脚本写入书签');
+      showDownloadResult(false);
+      showStep('step-download');
+    }
   }
 }
 
