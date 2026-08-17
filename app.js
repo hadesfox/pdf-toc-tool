@@ -6,6 +6,9 @@ const CONFIG = {
   scanDPI: 100,
 };
 
+// Windows 一键版（本地高精度 OCR 工具）下载页
+const RELEASE_URL = 'https://github.com/hadesfox/pdf-toc-tool/releases/latest';
+
 // ===== State =====
 const state = {
   file: null,
@@ -338,6 +341,28 @@ function downloadLocalScript() {
   log('已下载本地处理脚本: apply_toc.py');
 }
 
+async function downloadFullScript() {
+  // 下载仓库同源的完整本地工具 pdf_toc.py（含 OCR 能力的独立 pipeline）
+  try {
+    const res = await fetch('pdf_toc.py');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const text = await res.text();
+    const blob = new Blob([text], { type: 'text/x-python;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'pdf_toc.py';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    log('已下载完整本地工具: pdf_toc.py');
+  } catch (e) {
+    log(`下载 pdf_toc.py 失败: ${e.message}`);
+    alert('下载完整工具失败，请到 GitHub 仓库 hadesfox/pdf-toc-tool 手动下载 pdf_toc.py');
+  }
+}
+
 function downloadJSON() {
   const data = {
     source: state.file.name,
@@ -388,14 +413,17 @@ function showDownloadResult(success) {
       <div class="success-icon" style="color: #f59e0b;">⚠️</div>
       <h2>浏览器无法直接保存此 PDF</h2>
       <p id="result-summary">
-        这个 PDF 文件较大（扫描版或对象数很多），前端 pdf-lib 在保存时超出了浏览器调用栈限制。<br><br>
+        这个 PDF 较大（扫描版或对象数很多），浏览器端 pdf-lib 保存时超出调用栈限制。<br><br>
         文件: <b>${escapeHtml(state.file.name)}</b><br>
         书签数: <b>${state.tocEntries.length}</b> 个
         （一级 ${l1} / 二级 ${l2} / 三级 ${l3}）<br>
         页码偏移: <b>${state.offset}</b><br><br>
-        请下载下面的 Python 脚本，在本地运行即可写入书签。
+        推荐下载 <b>Windows 一键版</b>（双击即用、无需安装 Python、本地高精度 OCR），
+        或下载下方脚本自装依赖后本地运行。
       </p>
-      <button class="btn primary large" id="btn-download-script">⬇ 下载 Python 脚本</button>
+      <a class="btn primary large" href="${RELEASE_URL}" target="_blank" rel="noopener">🖥 下载 Windows 一键版</a>
+      <button class="btn" id="btn-download-full">⬇ 下载完整工具 pdf_toc.py</button>
+      <button class="btn" id="btn-download-script">⬇ 下载数据脚本 apply_toc.py</button>
       <button class="btn" id="btn-download-json">⬇ 下载 JSON 数据</button>
       <button class="btn" id="btn-reset">处理另一个文件</button>
     `;
@@ -405,6 +433,8 @@ function showDownloadResult(success) {
   const btnDownload = $('btn-download');
   if (btnDownload) btnDownload.addEventListener('click', download);
   $('btn-download-script').addEventListener('click', downloadLocalScript);
+  const btnFull = $('btn-download-full');
+  if (btnFull) btnFull.addEventListener('click', downloadFullScript);
   const btnJson = $('btn-download-json');
   if (btnJson) btnJson.addEventListener('click', downloadJSON);
   $('btn-reset').addEventListener('click', reset);

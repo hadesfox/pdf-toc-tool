@@ -1,0 +1,12 @@
+# 打包产物（大文件，走 GitHub Releases 分发，不入库）
+dist/
+build*/
+build_env/
+
+# Python
+__pycache__/
+*.pyc
+
+# 真实验证生成的临时产物
+tests/out_toc.json
+tests/_page*.png
